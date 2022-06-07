@@ -1,0 +1,73 @@
+---
+
+- name: Configure keepalived
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: "{{ keepalived_config_directory_path }}/{{ keepalived_config_base_file }}"
+    mode: "0640"
+  notify:
+    - reload keepalived
+
+- debug:
+    var: keepalived_scripts
+
+- debug:
+    var: item
+  loop: "{{ keepalived_scripts | dict2items }}"
+
+- debug:
+    var: item.key
+  loop: "{{ keepalived_scripts | dict2items }}"
+
+- pause:
+
+- name: Configure keepalived script
+  ansible.builtin.template:
+    src: keepalived_script.conf.j2
+    dest: "{{ keepalived_config_directory_path }}/scripts/{{ item.key }}.conf"
+    mode: "0640"
+  loop: "{{ keepalived_scripts| dict2items }}"
+  notify:
+    - reload keepalived
+
+- name: Configure keepalived sync_groups
+  ansible.builtin.template:
+    src: keepalived_sync_groups.conf.j2
+    dest: "{{ keepalived_config_directory_path }}/sync_groups/{{ item.key }}.conf"
+    mode: "0640"
+  loop: "{{ keepalived_sync_groups | dict2items }}"
+  notify:
+    - reload keepalived
+
+- name: Configure keepalived instances
+  ansible.builtin.template:
+    src: keepalived_instances.conf.j2
+    dest: "{{ keepalived_config_directory_path }}/instances/{{ item.key }}.conf"
+    mode: "0640"
+  loop: "{{ keepalived_instances | dict2items }}"
+  notify:
+    - reload keepalived
+
+- debug:
+    var: keepalived_virtual_server_groups
+
+- pause:
+
+- name: Configure keepalived server groups
+  ansible.builtin.template:
+    src: keepalived_virtual_server_groups.conf.j2
+    dest: "{{ keepalived_config_directory_path }}/groups/{{ item.name }}.conf"
+    mode: "0640"
+  loop: "{{ keepalived_virtual_server_groups }}"
+  notify:
+    - reload keepalived
+
+- name: Configure keepalived services
+  ansible.builtin.template:
+    src: keepalived_services.conf.j2
+    dest: "{{ keepalived_config_directory_path }}/services/{{ item.name }}.conf"
+    mode: "0640"
+  loop: "{{ keepalived_virtual_server_groups }}"
+# keepalived_virtual_servers
+  notify:
+    - reload keepalived
