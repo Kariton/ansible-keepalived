@@ -13,7 +13,8 @@
     src: keepalived_script.conf.j2
     dest: "{{ keepalived_config_directory_path }}/scripts/{{ item.key }}.conf"
     mode: "0640"
-  loop: "{{ keepalived_scripts| dict2items }}"
+  when: keepalived_scripts is defined
+  loop: "{{ keepalived_scripts | dict2items }}"
   notify:
     - reload keepalived
 
@@ -22,6 +23,7 @@
     src: keepalived_sync_groups.conf.j2
     dest: "{{ keepalived_config_directory_path }}/sync_groups/{{ item.key }}.conf"
     mode: "0640"
+  when: keepalived_sync_groups is defined
   loop: "{{ keepalived_sync_groups | dict2items }}"
   notify:
     - reload keepalived
@@ -31,6 +33,7 @@
     src: keepalived_instances.conf.j2
     dest: "{{ keepalived_config_directory_path }}/instances/{{ item.key }}.conf"
     mode: "0640"
+  when: keepalived_instances is defined
   loop: "{{ keepalived_instances | dict2items }}"
   notify:
     - reload keepalived
@@ -40,6 +43,7 @@
     src: keepalived_virtual_server_groups.conf.j2
     dest: "{{ keepalived_config_directory_path }}/groups/{{ item.name }}.conf"
     mode: "0640"
+  when: keepalived_virtual_server_groups is defined
   loop: "{{ keepalived_virtual_server_groups }}"
   notify:
     - reload keepalived
@@ -49,6 +53,7 @@
     src: keepalived_single_services.conf.j2
     dest: "{{ keepalived_config_directory_path }}/services/single_{{ item.ip | replace('.', '_') }}.conf"
     mode: "0640"
+  when: keepalived_virtual_servers is defined
   loop: "{{ keepalived_virtual_servers }}"
   notify:
     - reload keepalived
@@ -58,6 +63,7 @@
     src: keepalived_group_services.conf.j2
     dest: "{{ keepalived_config_directory_path }}/services/group_{{ item.name }}.conf"
     mode: "0640"
+  when: keepalived_virtual_server_groups is defined
   loop: "{{ keepalived_virtual_server_groups }}"
   notify:
     - reload keepalived
