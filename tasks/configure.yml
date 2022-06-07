@@ -8,19 +8,6 @@
   notify:
     - reload keepalived
 
-- debug:
-    var: keepalived_scripts
-
-- debug:
-    var: item
-  loop: "{{ keepalived_scripts | dict2items }}"
-
-- debug:
-    var: item.key
-  loop: "{{ keepalived_scripts | dict2items }}"
-
-- pause:
-
 - name: Configure keepalived script
   ansible.builtin.template:
     src: keepalived_script.conf.j2
@@ -48,11 +35,6 @@
   notify:
     - reload keepalived
 
-- debug:
-    var: keepalived_virtual_server_groups
-
-- pause:
-
 - name: Configure keepalived server groups
   ansible.builtin.template:
     src: keepalived_virtual_server_groups.conf.j2
@@ -62,12 +44,20 @@
   notify:
     - reload keepalived
 
-- name: Configure keepalived services
+- name: Configure keepalived single services
   ansible.builtin.template:
     src: keepalived_services.conf.j2
-    dest: "{{ keepalived_config_directory_path }}/services/{{ item.name }}.conf"
+    dest: "{{ keepalived_config_directory_path }}/services/single_{{ item.ip | replace('.', '_') }}.conf"
+    mode: "0640"
+  loop: "{{ keepalived_virtual_servers }}"
+  notify:
+    - reload keepalived
+
+- name: Configure keepalived group services
+  ansible.builtin.template:
+    src: keepalived_services.conf.j2
+    dest: "{{ keepalived_config_directory_path }}/services/group_{{ item.name }}.conf"
     mode: "0640"
   loop: "{{ keepalived_virtual_server_groups }}"
-# keepalived_virtual_servers
   notify:
     - reload keepalived

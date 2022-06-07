@@ -18,15 +18,19 @@
 {{ ansible_managed | comment }}
 {% endif %}
 
-{% set vserver_group = item %}
-virtual_server group {{ vserver_group.name }} {
-  {# set variable to prevent duplicate code for the same task #}
-  {% set vserver = vserver_group %}
+{# keepalived_virtual_servers without groups #}
+{% set vserver = item %}
+virtual_server {{ vserver.ip }} {{ vserver.port }} {
   {% include './templates/keepalived-virtual-server.j2' %}
-  {% for rserver in vserver_group.real_servers %}
+
+  {% for rserver in vserver.real_servers %}
   real_server {{ rserver.ip }} {{ rserver.port }} {
     {% include './templates/keepalived-real-server.j2' %}
     {% include './templates/keepalived-checks.j2' %}
   }
   {% endfor %}
+  {% if vserver.sorry_server is defined %}
+  sorry_server {{ vserver.sorry_server.ip }} {{ vserver.sorry_server.port }}
+  {% endif %}
+
 }
