@@ -94,7 +94,7 @@
   tags:
     - keepalived-install
 
-- name: Create configuration directorys if they do not exist
+- name: Create configuration directories if they do not exist
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
