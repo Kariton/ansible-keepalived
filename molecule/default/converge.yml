@@ -48,6 +48,17 @@
   - name: Include keepalived vars
     ansible.builtin.include_vars: "../../tests/keepalived_haproxy_combined_example.yml"
 
-  - name: "Include ansible-keepalived"
+  - name: Include ansible-keepalived
     ansible.builtin.include_role:
-      name: "ansible-keepalived"
+      name: ansible-keepalived
+
+  - name: half way done
+    ansible.builtin.debug:
+      msg: "--- --- --- --- UPDATE CONFIGURATION --- --- --- ---" 
+
+  - name: Include keepalived edit vars
+    ansible.builtin.include_vars: "../../tests/keepalived_haproxy_combined_edit_example.yml"
+
+  - name: Include ansible-keepalived
+    ansible.builtin.include_role:
+      name: ansible-keepalived

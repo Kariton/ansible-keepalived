@@ -18,6 +18,7 @@
 
     - name: Get presend instance configurations
       ansible.builtin.command: "ls -la {{ keepalived_config_directory_path }}/instances/"
+      changed_when: false
       register: dir_out
 
     - name: Ensure the first node is master
@@ -25,5 +26,5 @@
         that:
           - "'ipv4_secondaries' in ansible_{{ vrrp_nic }}"
           - "ansible_{{ vrrp_nic }}['ipv4_secondaries'][0]['address'] == '192.168.33.2'"
-          - "dir_out.stdout_lines == ['ext.conf', 'int.conf']"
+          - dir_out.stdout_lines == 'int.conf'
       when: inventory_hostname == ansible_play_hosts[0]

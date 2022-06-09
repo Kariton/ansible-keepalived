@@ -47,4 +47,3 @@
   - name: Include ansible-keepalived
     ansible.builtin.include_role:
       name: "ansible-keepalived"
-
