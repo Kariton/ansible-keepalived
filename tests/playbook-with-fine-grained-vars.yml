@@ -8,7 +8,7 @@
 
   - name: Include ansible-keepalived
     ansible.builtin.include_role:
-      name: "ansible-keepalived"
+      name: ansible-keepalived
 
 - name: Install keepalived on the rest of the nodes for haproxy use
   hosts: all:!master_node
@@ -21,7 +21,7 @@
 
   - name: Include ansible-keepalived
     ansible.builtin.include_role:
-      name: "ansible-keepalived"
+      name: ansible-keepalived
 
 - name: Edit keepalived on master node intances
   hosts: master_node
@@ -33,7 +33,7 @@
 
   - name: Include ansible-keepalived
     ansible.builtin.include_role:
-      name: "ansible-keepalived"
+      name: ansible-keepalived
 
 - name: Edit keepalived on the rest of the nodes instances
   hosts: all:!master_node
@@ -46,4 +46,4 @@
 
   - name: Include ansible-keepalived
     ansible.builtin.include_role:
-      name: "ansible-keepalived"
+      name: ansible-keepalived
