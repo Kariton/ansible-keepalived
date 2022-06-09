@@ -110,7 +110,12 @@
     - keepalived-config
 
 - ansible.builtin.include_tasks:
-    file: configure.yml
+    file: create_configuration.yml
+  tags:
+    - keepalived-config
+
+- ansible.builtin.include_tasks:
+    file: remove_configuration.yml
   tags:
     - keepalived-config
 
