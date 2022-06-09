@@ -22,7 +22,7 @@
 {% set instance = item.value %}
 vrrp_instance {{ name }} {
   interface {{ instance.interface }}
-{% if instance.state in ['MASTER', 'BACKUP']%}
+{% if instance.state in ['MASTER', 'BACKUP'] %}
   state {{ instance.state }}
 {% endif %}
   virtual_router_id {{ instance.virtual_router_id }}

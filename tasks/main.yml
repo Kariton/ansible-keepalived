@@ -24,7 +24,8 @@
   tags:
     - always
 
-- ansible.builtin.include_tasks:
+- name: Setup SELinux
+  ansible.builtin.include_tasks:
     file: keepalived_selinux.yml
   when:
     - keepalived_selinux_compile_rules | length > 0
@@ -109,12 +110,14 @@
   tags:
     - keepalived-config
 
-- ansible.builtin.include_tasks:
+- name: Create keepalived configuration snippets
+  ansible.builtin.include_tasks:
     file: create_configuration.yml
   tags:
     - keepalived-config
 
-- ansible.builtin.include_tasks:
+- name: Remove keepalived configuration snippets
+  ansible.builtin.include_tasks:
     file: remove_configuration.yml
   tags:
     - keepalived-config
@@ -280,7 +283,7 @@
     - keepalived_systemd_overrides | bool
 
 - name: Apply keepalived override to start after network is up
-  ansible.builtin.ini_file:
+  community.general.ini_file:
     path: /etc/systemd/system/keepalived.service.d/override.conf
     create: yes
     section: 'Unit'
@@ -296,7 +299,7 @@
     - restart keepalived
 
 - name: Apply keepalived override to restart service always
-  ansible.builtin.ini_file:
+  community.general.ini_file:
     path: /etc/systemd/system/keepalived.service.d/override.conf
     section: 'Service'
     option: "Restart"
