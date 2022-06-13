@@ -140,26 +140,6 @@
   tags:
     - keepalived-config
 
-- name: Check that daemon options file exists
-  ansible.builtin.stat:
-    path: "{{ keepalived_daemon_options_file_path }}"
-  register: keepalived_daemon_options_file
-  tags:
-    - keepalived-config
-
-- name: Configure keepalived extra params
-  ansible.builtin.lineinfile:
-    line: "{{ item }}"
-    regexp: "^{{ item.split('=')[0] }}"
-    dest: "{{ keepalived_daemon_options_file_path }}"
-    state: present
-  loop: "{{ keepalived_daemon_default_options_overrides }}"
-  when: keepalived_daemon_options_file.stat.exists
-  tags:
-    - keepalived-config
-  notify:
-    - restart keepalived
-
 - name: Drop additional files
   ansible.builtin.include_tasks:
     file: drop_files.yml

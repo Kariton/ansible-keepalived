@@ -110,6 +110,7 @@ argument_specs:
           - It depends on bool keepalived_systemd_overrides, so to add both must be True
 # FAILED! => {"msg": "'_keepalived_daemon_options_file_path' is undefined"}
 # this is how it is defined in defaults/main.yml - argument_specs does not know about /vars/*.yml
+# alternative entry point does not work atm. -> https://github.com/ansible/ansible/issues/75456
 #      keepalived_daemon_options_file_path:
 #        type: str
 #        default: "_keepalived_daemon_options_file_path"
@@ -133,3 +134,17 @@ argument_specs:
         description:
           - Remove all keepalived configurations
           - Clears entire 'keepalived_config_directory_path'
+
+# WELL... https://github.com/ansible/ansible/issues/75456
+#  create_configuration:
+#    short_description: "configuration"
+#    options:
+#      keepalived_daemon_options_file_path:
+#        type: str
+#        default: "_keepalived_daemon_options_file_path"
+#        description:
+#          - Set location of keepalived daemon options file path
+#          - This is included into the vars/*.yml
+#          - For Debian based systems it's usually /etc/default/keepalived
+#          - For RedHat based systems it's usually /etc/sysconfig/keepalived
+#
