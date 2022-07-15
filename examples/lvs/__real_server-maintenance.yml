@@ -1,0 +1,94 @@
+---
+
+- hosts: loadbalancers, {{ realserver }}
+
+  pre_tasks:
+    - name: Create updated keepalived_virtual_server_groups
+      ansible.builtin.set_fact:
+        updated_keepalived_virtual_server_groups: |
+          {% set virtual_server_group_list = [] %}
+          {% for virtual_server_group in keepalived_virtual_server_groups %}
+          {% set real_server_list = [] %}
+          {%   for real_server in virtual_server_group.real_servers %}
+          {%     if real_server.ip == hostvars[realserver]['ansible_default_ipv4']['address'] %}
+          {%       set real_server = real_server | combine({'weight':0}) %}
+          {%     endif %}
+          {%       set real_server_list = real_server_list.append(real_server) %}
+          {%   endfor %}
+          {%       set virtual_server_group = virtual_server_group | combine({'real_servers':real_server_list}) %}
+          {%       set virtual_server_group_list = virtual_server_group_list.append(virtual_server_group) %}
+          {% endfor %}
+          {{ virtual_server_group_list }}
+      run_once: true
+      when: "'loadbalancers' in group_names"
+
+    - name: include role 'ansible-keepalived'
+      block:
+        - name: "exclude {{ realserver }} from loadbalancer"
+          ansible.builtin.include_role:
+            name: ansible-keepalived
+            apply:
+              tags:
+                - keepalived-config
+          when: "'loadbalancers' in group_names"
+          register: ansible-keepalived_result
+          vars:
+            keepalived_virtual_server_groups: "{{ updated_keepalived_virtual_server_groups }}"
+      rescue:
+        - name: End the play
+          ansible.builtin.meta: end_batch
+
+    - name: Force all notified handlers to run at this point, not waiting for normal sync points
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify weight is set to zero
+      ansible.builtin.shell:
+        cmd: "ipvsadm -L -n | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }} | awk '{ print $4 }'"
+      register: keepalived_zero_weight
+      run_once: true
+      changed_when: false
+      failed_when: keepalived_zero_weight.stdout_lines | sum != 0
+      delegate_to: "{{ groups['loadbalancers'][0] }}"
+
+    - name: Wait until 'ActiveConn' are below threshold
+      ansible.builtin.shell:
+        cmd: "ipvsadm -L -n | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }} | awk '{ print $5 }'"
+      register: keepalived_activeconn
+      until: keepalived_activeconn.stdout_lines | sum <= activeconn_threshold
+      retries: 300
+      delay: 5
+      run_once: true
+      changed_when: false
+      delegate_to: "{{ groups['loadbalancers'][0] }}"
+
+  tasks:
+    - name: do stuff
+      block:
+        - name: "configure something on {{ realserver }}"
+          ansible.builtin.debug:
+            msg: "Do some stuff here."
+          when: "'loadbalancers' not in group_names"
+      rescue:
+        - name: End the play
+          ansible.builtin.meta: end_batch
+
+    - name: Force all notified handlers to run at this point, not waiting for normal sync points
+      ansible.builtin.meta: flush_handlers
+
+  post_tasks:
+    - name: "include {{ realserver }} in loadbalancer"
+      ansible.builtin.include_role:
+        name: ansible-keepalived
+        apply:
+          tags:
+            - keepalived-config
+      when: "'loadbalancers' in group_names"
+
+    - name: Verify weight is no longer set to zero
+      ansible.builtin.shell:
+        cmd: "ipvsadm -L -n | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }} | awk '{ print $4 }'"
+      register: keepalived_non_zero_weight
+      run_once: true
+      changed_when: false
+      failed_when: 0 in keepalived_non_zero_weight.stdout_lines
+      delegate_to: "{{ groups['loadbalancers'][0] }}"
