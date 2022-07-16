@@ -47,14 +47,14 @@
       register: keepalived_zero_weight
       run_once: true
       changed_when: false
-      failed_when: keepalived_zero_weight.stdout_lines | sum != 0
+      failed_when: keepalived_zero_weight.stdout_lines | map('int') | sum != 0
       delegate_to: "{{ groups['loadbalancers'][0] }}"
 
-    - name: Wait until 'ActiveConn' are below threshold
+    - name: "Wait until 'ActiveConn' are below threshold of '{{ activeconn_threshold }}'"
       ansible.builtin.shell:
         cmd: "ipvsadm -L -n | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }} | awk '{ print $5 }'"
       register: keepalived_activeconn
-      until: keepalived_activeconn.stdout_lines | sum <= activeconn_threshold
+      until: keepalived_activeconn.stdout_lines | map('int') | sum <= activeconn_threshold
       retries: 300
       delay: 5
       run_once: true
@@ -90,5 +90,5 @@
       register: keepalived_non_zero_weight
       run_once: true
       changed_when: false
-      failed_when: 0 in keepalived_non_zero_weight.stdout_lines
+      failed_when: 0 in keepalived_non_zero_weight.stdout_lines | map('int')
       delegate_to: "{{ groups['loadbalancers'][0] }}"
