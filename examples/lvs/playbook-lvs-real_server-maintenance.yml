@@ -16,32 +16,32 @@
 
 - hosts: localhost
 
-- name: "{{ realserver }}"
+- name: "{{ realserver_name }}"
   ansible.builtin.import_playbook: __real_server-maintenance.yml
   run_once: true
   vars:
     # additional host to 'loadbalancers' for imported playbook
-    realserver: realserver_dev01.example.tld
+    realserver_name: realserver_dev01.example.tld
     # LVS ActiveConn threshold
     activeconn_threshold: 5
 
-- name: "{{ realserver }}"
+- name: "{{ realserver_name }}"
   ansible.builtin.import_playbook: __real_server-maintenance.yml
   run_once: true
   vars:
-    realserver: realserver_dev02.example.tld
+    realserver_name: realserver_dev02.example.tld
     activeconn_threshold: 5
 
-- name: "{{ realserver }}"
+- name: "{{ realserver_name }}"
   ansible.builtin.import_playbook: __real_server-maintenance.yml
   run_once: true
   vars:
-    realserver: realserver_dev03.example.tld
+    realserver_name: realserver_dev03.example.tld
     activeconn_threshold: 5
 
-- name: "{{ realserver }}"
+- name: "{{ realserver_name }}"
   ansible.builtin.import_playbook: __real_server-maintenance.yml
   run_once: true
   vars:
-    realserver: realserver_qs01.example.tld
+    realserver_name: realserver_qs01.example.tld
     activeconn_threshold: 5

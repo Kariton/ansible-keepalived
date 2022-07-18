@@ -1,15 +1,60 @@
 ---
 
+## short description:
+##
+## this writeup is a "addon" to the 'keepalived' role.
+## its not intended as general lvs management role.
+## if you need (NON persistent) 'weight' changes to your lvs / ipvsadm runtime configuration
+## you just need to provide the variable "{{ keepalived_virtual_server_groups }}" the same way as for 'evrardjp/ansible-keepalived'
+
+## minimum variables:
+#
+## real server name
+# realserver_name: 'host.example.tld'
+#
+## lvs host(s)
+# lvs_hosts: '['lb01.example.com', 'lb02.example.com']'
+#
+## configuration dict
+# keepalived_virtual_server_groups:
+#   - name: 'something'
+#     vips:
+#       - ip: '172.16.0.1'
+#         port: 3128
+#     protocol: 'TCP'
+#     real_servers:
+#       - ip: '172.16.0.2'
+#         port: 3128
+#         weight: 1
+#       - ip: '172.16.0.3'
+#         port: 3128
+#         weight: 1
+
 - hosts: loadbalancers, {{ realserver_name }}
   vars:
-## 'realserver_name' is mandatory
-#        realserver_name: ''
+# 'ipvsadm' as driver will change the weigth just in runtime - 'keepalived' would be the persistent way. a reload of keepalived would instandly reset the weight if changend non persistent.
     lvs_driver: 'ipvsadm'
 
+# BUT im currently unable to change the weigth through keepalived below 1 on my EL 8 maschine... i dont know if this is a bug or a misconfiguration...
+
+# I know that it is documented this way an does work on a EL 7 installation with keepalived and ipvsadm:
+### ipvsadm --version
+#ipvsadm v1.27 2008/5/15 (compiled with popt and IPVS v1.2.1)
+### keepalived --version
+#Keepalived v1.3.5 (03/19,2017), git commit v1.3.5-6-g6fa32f2
+#Copyright(C) 2001-2017 Alexandre Cassen, <acassen@gmail.com>
+#Build options:  PIPE2 LIBNL3 RTA_ENCAP RTA_EXPIRES RTA_PREF RTA_VIA FRA_OIFNAME FRA_SUPPRESS_PREFIXLEN FRA_TUN_ID RTAX_CC_ALGO RTAX_QUICKACK LIBIPTC LIBIPSET_DYNAMIC LVS LIBIPVS_NETLINK VRRP VRRP_AUTH VRRP_VMAC SOCK_NONBLOCK SOCK_CLOEXEC FIB_ROUTING INET6_ADDR_GEN_MODE SNMP_V3_FOR_V2 SNMP SNMP_KEEPALIVED SNMP_CHECKER SNMP_RFC SNMP_RFCV2 SNMP_RFCV3 SO_MARK
+
+# Changes to higher weight levels and then down does work on EL 8... but never below 1. using IPVSADM does work....
+# so there is some investigation needed. maybe someone can confirm this?
+
+
+# TODO: can i move more variables into 'defaults/main.yml'?
   pre_tasks:
     # defaults/main.yml
     - ansible.builtin.set_fact:
         realserver_ip: "{{ hostvars[realserver_name]['ansible_default_ipv4']['address'] }}"
+        lvs_hosts: "{{ lvs_hosts | d(groups['loadbalancers']) }}"
         lvs_driver: "{{ lvs_driver | d('keepalived') }}"
         state: "{{ state | d('present') }}"
         activeconn_threshold: "{{ activeconn_threshold | d(0) }}"
@@ -25,7 +70,7 @@
 
     - name: Create updated keepalived_virtual_server_groups
       ansible.builtin.set_fact:
-        updated_keepalived_virtual_server_groups: |
+        _updated_keepalived_virtual_server_groups: |
           {% set virtual_server_group_list = [] %}
           {% for virtual_server_group in keepalived_virtual_server_groups %}
           {% set real_server_list = [] %}
@@ -41,7 +86,7 @@
           {{ virtual_server_group_list }}
       run_once: true
       when: 
-        - "'loadbalancers' in group_names"
+        - inventory_hostname in lvs_hosts
         - ( realserver_roles is defined ) or ( state == 'present' )
         - lvs_driver == 'keepalived'
 
@@ -54,12 +99,11 @@
               tags:
                 - keepalived-config
           when:
-            - "'loadbalancers' in group_names"
+            - inventory_hostname in lvs_hosts
             - ( realserver_roles is defined ) or ( state == 'present' )
             - lvs_driver == 'keepalived'
-          register: ansible-keepalived_result
           vars:
-            keepalived_virtual_server_groups: "{{ updated_keepalived_virtual_server_groups }}"
+            keepalived_virtual_server_groups: "{{ _updated_keepalived_virtual_server_groups }}"
       rescue:
         - name: End the play
           ansible.builtin.meta: end_batch
@@ -67,12 +111,12 @@
     - name: Force all notified handlers to run at this point, not waiting for normal sync points
       ansible.builtin.meta: flush_handlers
 
-    - name: set weight 0 via shell command
+    - name: set weight 0 via command
       ansible.builtin.command:
         argv:
         - ipvsadm
         - --edit-server
-        - "{% if vip_config.protocol | lower == 'udp' %}--udp-service{% else %}--tcp-service{% endif %}"
+        - "{% if vip_config.protocol | lower == 'tcp' %}--tcp-service{% else %}--udp-service{% endif %}"
         - "{{ vip_config.ip }}:{{ vip_config.port }}"
         - --real-server
         - "{{ vip_config.rs.ip }}:{{ vip_config.rs.port }}"
@@ -80,7 +124,7 @@
         - 0
       changed_when: false
       when:
-        - "'loadbalancers' in group_names"
+        - inventory_hostname in lvs_hosts
         - ( realserver_roles is defined ) or ( state == 'present' )
         - lvs_driver == 'ipvsadm'
       loop_control:
@@ -106,8 +150,8 @@
       register: keepalived_zero_weight
       run_once: true
       changed_when: false
-      failed_when: ( keepalived_zero_weight.stdout | map('int') |  sum ) != 0
-      delegate_to: "{{ groups['loadbalancers'][0] }}"
+      failed_when: ( keepalived_zero_weight.stdout_lines | map('int') |  sum ) != 0
+      delegate_to: "{{ lvs_hosts | first }}"
       when:
         - ( realserver_roles is defined ) or ( state == 'present' )
 
@@ -120,7 +164,7 @@
       delay: 5
       run_once: true
       changed_when: false
-      delegate_to: "{{ groups['loadbalancers'][0] }}"
+      delegate_to: "{{ lvs_hosts | first }}"
       when:
         - ( realserver_roles is defined ) or ( state == 'present' )
 
@@ -129,28 +173,27 @@
       block:
         - name: "convert possible string to list"
           ansible.builtin.set_fact:
-            realserver_roles_list: "{{ ( [] + [ realserver_roles ] ) | flatten }}"
+            _realserver_roles_list: "{{ ( [] + [ realserver_roles ] ) | flatten }}"
 
         - name: "run roles {{ realserver_roles }} on '{{ realserver_name }}'"
           ansible.builtin.include_role:
             name: "{{ role }}"
           loop_control:
             loop_var: 'role'
-          loop: "{{ realserver_roles_list }}"
-          when:
-            - "'loadbalancers' not in group_names"
-            - realserver_roles is defined
+          loop: "{{ _realserver_roles_list }}"
+
       rescue:
         - name: End the play
           ansible.builtin.meta: end_batch
+
       when:
-        - "'loadbalancers' not in group_names"
+        - inventory_hostname not in lvs_hosts
         - realserver_roles is defined
 
     - name: Force all notified handlers to run at this point, not waiting for normal sync points
       ansible.builtin.meta: flush_handlers
 
-    - name: Wait for realserver_name to be recognised by LVS again
+    - name: "Wait for '{{ realserver_name }}' to be recognised by LVS again"
       ansible.builtin.shell:
         cmd: "ipvsadm --list --numeric | grep {{ realserver_ip }}"
       register: keepalived_rs
@@ -159,7 +202,7 @@
       delay: 5
       run_once: true
       changed_when: false
-      delegate_to: "{{ groups['loadbalancers'][0] }}"
+      delegate_to: "{{ lvs_hosts | first }}"
       when:
         - ( realserver_roles is defined ) or ( state == 'absent' )
 
@@ -171,16 +214,16 @@
           tags:
             - keepalived-config
       when:
-        - "'loadbalancers' in group_names"
+        - inventory_hostname in lvs_hosts
         - ( realserver_roles is defined ) or ( state == 'absent' )
         - lvs_driver == 'keepalived'
 
-    - name: reset weight to desired value via shell command
+    - name: reset weight to desired value via command
       ansible.builtin.command:
         argv:
         - ipvsadm
         - --edit-server
-        - "{% if vip_config.protocol | lower == 'udp' %}--udp-service{% else %}--tcp-service{% endif %}"
+        - "{% if vip_config.protocol | lower == 'tcp' %}--tcp-service{% else %}--udp-service{% endif %}"
         - "{{ vip_config.ip }}:{{ vip_config.port }}"
         - --real-server
         - "{{ vip_config.rs.ip }}:{{ vip_config.rs.port }}"
@@ -188,7 +231,7 @@
         - "{{ vip_config.rs.weight }}"
       changed_when: false
       when:
-        - "'loadbalancers' in group_names"
+        - inventory_hostname in lvs_hosts
         - ( realserver_roles is defined ) or ( state == 'absent' )
         - lvs_driver == 'ipvsadm'
       loop_control:
@@ -215,6 +258,6 @@
       run_once: true
       changed_when: false
       failed_when: 0 in keepalived_non_zero_weight.stdout_lines | map('int')
-      delegate_to: "{{ groups['loadbalancers'][0] }}"
+      delegate_to: "{{ lvs_hosts | first }}"
       when:
         - ( realserver_roles is defined ) or ( state == 'absent' )
