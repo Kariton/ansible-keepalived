@@ -1,24 +1,26 @@
 ---
 
-- hosts: loadbalancers, {{ realserver }}
+- hosts: loadbalancers, {{ realserver_name }}
   vars:
+## 'realserver_name' is mandatory
+#        realserver_name: ''
     lvs_driver: 'ipvsadm'
 
   pre_tasks:
     # defaults/main.yml
     - ansible.builtin.set_fact:
-        state: "{{ state | d('present') }}"
+        realserver_ip: "{{ hostvars[realserver_name]['ansible_default_ipv4']['address'] }}"
         lvs_driver: "{{ lvs_driver | d('keepalived') }}"
+        state: "{{ state | d('present') }}"
         activeconn_threshold: "{{ activeconn_threshold | d(0) }}"
 
     - name: validate variables
       ansible.builtin.assert:
         that:
-          - ( realserver is defined ) and
-            ( realserver in ansible_play_hosts )
-          - ( realserver_role is defined ) or
+          - ( realserver_name is defined ) and
+            ( realserver_name in ansible_play_hosts )
+          - ( realserver_roles is defined ) or
             ( state in ['present', 'absent'] )
-          - activeconn_threshold is defined
       run_once: true
 
     - name: Create updated keepalived_virtual_server_groups
@@ -28,7 +30,7 @@
           {% for virtual_server_group in keepalived_virtual_server_groups %}
           {% set real_server_list = [] %}
           {%   for real_server in virtual_server_group.real_servers %}
-          {%     if real_server.ip == hostvars[realserver]['ansible_default_ipv4']['address'] %}
+          {%     if real_server.ip == realserver_ip %}
           {%       set real_server = real_server | combine({'weight':0}) %}
           {%     endif %}
           {%       set real_server_list = real_server_list.append(real_server) %}
@@ -40,12 +42,12 @@
       run_once: true
       when: 
         - "'loadbalancers' in group_names"
-        - ( realserver_role is defined ) or ( state == 'present' )
+        - ( realserver_roles is defined ) or ( state == 'present' )
         - lvs_driver == 'keepalived'
 
     - name: include role 'ansible-keepalived'
       block:
-        - name: "Set weight 0 for '{{ realserver }}' in keepalived configuration"
+        - name: "Set weight 0 for '{{ realserver_name }}' in keepalived configuration"
           ansible.builtin.include_role:
             name: ansible-keepalived
             apply:
@@ -53,7 +55,7 @@
                 - keepalived-config
           when:
             - "'loadbalancers' in group_names"
-            - ( realserver_role is defined ) or ( state == 'present' )
+            - ( realserver_roles is defined ) or ( state == 'present' )
             - lvs_driver == 'keepalived'
           register: ansible-keepalived_result
           vars:
@@ -79,7 +81,7 @@
       changed_when: false
       when:
         - "'loadbalancers' in group_names"
-        - ( realserver_role is defined ) or ( state == 'present' )
+        - ( realserver_roles is defined ) or ( state == 'present' )
         - lvs_driver == 'ipvsadm'
       loop_control:
         loop_var: vip_config
@@ -88,7 +90,7 @@
         {% for virtual_server_group in keepalived_virtual_server_groups %}
         {% set real_server_list = [] %}
         {%   for real_server in virtual_server_group.real_servers %}
-        {%     if real_server.ip == hostvars[realserver]['ansible_default_ipv4']['address'] %}
+        {%     if real_server.ip == realserver_ip %}
         {%       set conf= virtual_server_group.vips | combine({'protocol':virtual_server_group.protocol}) %}
         {%       set rs = real_server %}
         {%       set conf = conf | combine({'rs':rs}) %}
@@ -100,18 +102,18 @@
 
     - name: Verify weight is set to zero
       ansible.builtin.shell:
-        cmd: "ipvsadm --list --numeric | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }} | awk '{ print $4 }'"
+        cmd: "ipvsadm --list --numeric | grep {{ realserver_ip }} | awk '{ print $4 }'"
       register: keepalived_zero_weight
       run_once: true
       changed_when: false
       failed_when: ( keepalived_zero_weight.stdout | map('int') |  sum ) != 0
       delegate_to: "{{ groups['loadbalancers'][0] }}"
       when:
-        - ( realserver_role is defined ) or ( state == 'present' )
+        - ( realserver_roles is defined ) or ( state == 'present' )
 
     - name: "Wait until 'ActiveConn' are below threshold of {{ activeconn_threshold }}"
       ansible.builtin.shell:
-        cmd: "ipvsadm --list --numeric | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }} | awk '{ print $5 }'"
+        cmd: "ipvsadm --list --numeric | grep {{ realserver_ip }} | awk '{ print $5 }'"
       register: keepalived_activeconn
       until: ( keepalived_activeconn.stdout_lines | map('int') | sum ) <= activeconn_threshold | int
       retries: 300
@@ -120,27 +122,37 @@
       changed_when: false
       delegate_to: "{{ groups['loadbalancers'][0] }}"
       when:
-        - ( realserver_role is defined ) or ( state == 'present' )
+        - ( realserver_roles is defined ) or ( state == 'present' )
 
   tasks:
-    - name: "include role '{{ realserver_role }}'"
+    - name: "include roles {{ realserver_roles }}"
       block:
-        - name: "run role '{{ realserver_role }}' on '{{ realserver }}'"
+        - name: "convert possible string to list"
+          ansible.builtin.set_fact:
+            realserver_roles_list: "{{ ( [] + [ realserver_roles ] ) | flatten }}"
+
+        - name: "run roles {{ realserver_roles }} on '{{ realserver_name }}'"
           ansible.builtin.include_role:
-            name: "{{ realserver_role }}"
+            name: "{{ role }}"
+          loop_control:
+            loop_var: 'role'
+          loop: "{{ realserver_roles_list }}"
           when:
             - "'loadbalancers' not in group_names"
-            - realserver_role is defined
+            - realserver_roles is defined
       rescue:
         - name: End the play
           ansible.builtin.meta: end_batch
+      when:
+        - "'loadbalancers' not in group_names"
+        - realserver_roles is defined
 
     - name: Force all notified handlers to run at this point, not waiting for normal sync points
       ansible.builtin.meta: flush_handlers
 
-    - name: Wait for realserver to be recognised by LVS again
+    - name: Wait for realserver_name to be recognised by LVS again
       ansible.builtin.shell:
-        cmd: "ipvsadm --list --numeric | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }}"
+        cmd: "ipvsadm --list --numeric | grep {{ realserver_ip }}"
       register: keepalived_rs
       until: keepalived_rs.stdout_lines | length > 0
       retries: 300
@@ -149,10 +161,10 @@
       changed_when: false
       delegate_to: "{{ groups['loadbalancers'][0] }}"
       when:
-        - ( realserver_role is defined ) or ( state == 'absent' )
+        - ( realserver_roles is defined ) or ( state == 'absent' )
 
   post_tasks:
-    - name: "Unset weight 0 for '{{ realserver }}' in keepalived configuration"
+    - name: "Unset weight 0 for '{{ realserver_name }}' in keepalived configuration"
       ansible.builtin.include_role:
         name: ansible-keepalived
         apply:
@@ -160,7 +172,7 @@
             - keepalived-config
       when:
         - "'loadbalancers' in group_names"
-        - ( realserver_role is defined ) or ( state == 'absent' )
+        - ( realserver_roles is defined ) or ( state == 'absent' )
         - lvs_driver == 'keepalived'
 
     - name: reset weight to desired value via shell command
@@ -177,7 +189,7 @@
       changed_when: false
       when:
         - "'loadbalancers' in group_names"
-        - ( realserver_role is defined ) or ( state == 'absent' )
+        - ( realserver_roles is defined ) or ( state == 'absent' )
         - lvs_driver == 'ipvsadm'
       loop_control:
         loop_var: vip_config
@@ -186,7 +198,7 @@
         {% for virtual_server_group in keepalived_virtual_server_groups %}
         {% set real_server_list = [] %}
         {%   for real_server in virtual_server_group.real_servers %}
-        {%     if real_server.ip == hostvars[realserver]['ansible_default_ipv4']['address'] %}
+        {%     if real_server.ip == realserver_ip %}
         {%       set conf= virtual_server_group.vips | combine({'protocol':virtual_server_group.protocol}) %}
         {%       set rs = real_server %}
         {%       set conf = conf | combine({'rs':rs}) %}
@@ -198,12 +210,11 @@
 
     - name: Verify weight is no longer set to zero
       ansible.builtin.shell:
-        cmd: "ipvsadm --list --numeric | grep {{ hostvars[realserver]['ansible_default_ipv4']['address'] }} | awk '{ print $4 }'"
+        cmd: "ipvsadm --list --numeric | grep {{ realserver_ip }} | awk '{ print $4 }'"
       register: keepalived_non_zero_weight
       run_once: true
       changed_when: false
       failed_when: 0 in keepalived_non_zero_weight.stdout_lines | map('int')
       delegate_to: "{{ groups['loadbalancers'][0] }}"
       when:
-        - ( realserver_role is defined ) or ( state == 'absent' )
-
+        - ( realserver_roles is defined ) or ( state == 'absent' )
